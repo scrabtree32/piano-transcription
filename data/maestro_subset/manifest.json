@@ -1,0 +1,121 @@
+[
+  {
+    "composer": "Domenico Scarlatti",
+    "title": "Sonata K. 525",
+    "duration": 65.9481178125,
+    "audio_path": "data/maestro_subset\\2008/MIDI-Unprocessed_09_R3_2008_01-07_ORIG_MID--AUDIO_09_R3_2008_wav--2.wav",
+    "midi_path": "data/maestro_subset\\2008/MIDI-Unprocessed_09_R3_2008_01-07_ORIG_MID--AUDIO_09_R3_2008_wav--2.midi"
+  },
+  {
+    "composer": "Domenico Scarlatti",
+    "title": "Sonata in D Minor, K. 9 L. 413",
+    "duration": 95.9707907813,
+    "audio_path": "data/maestro_subset\\2008/MIDI-Unprocessed_10_R2_2008_01-05_ORIG_MID--AUDIO_10_R2_2008_wav--1.wav",
+    "midi_path": "data/maestro_subset\\2008/MIDI-Unprocessed_10_R2_2008_01-05_ORIG_MID--AUDIO_10_R2_2008_wav--1.midi"
+  },
+  {
+    "composer": "Sergei Rachmaninoff",
+    "title": "Prelude Op. 32 No. 8 in A Minor",
+    "duration": 109.870833333,
+    "audio_path": "data/maestro_subset\\2015/MIDI-Unprocessed_R1_D1-9-12_mid--AUDIO-from_mp3_11_R1_2015_wav--5.wav",
+    "midi_path": "data/maestro_subset\\2015/MIDI-Unprocessed_R1_D1-9-12_mid--AUDIO-from_mp3_11_R1_2015_wav--5.midi"
+  },
+  {
+    "composer": "Franz Schubert",
+    "title": "Impromptu Op. 90 No. 4 in A-flat Major",
+    "duration": 112.872916667,
+    "audio_path": "data/maestro_subset\\2015/MIDI-Unprocessed_R2_D1-2-3-6-7-8-11_mid--AUDIO-from_mp3_03_R2_2015_wav--1.wav",
+    "midi_path": "data/maestro_subset\\2015/MIDI-Unprocessed_R2_D1-2-3-6-7-8-11_mid--AUDIO-from_mp3_03_R2_2015_wav--1.midi"
+  },
+  {
+    "composer": "Fr\u00e9d\u00e9ric Chopin",
+    "title": "Etudes Op. 10 Nos. 9",
+    "duration": 124.808902969,
+    "audio_path": "data/maestro_subset\\2011/MIDI-Unprocessed_24_R1_2011_MID--AUDIO_R1-D9_11_Track11_wav.wav",
+    "midi_path": "data/maestro_subset\\2011/MIDI-Unprocessed_24_R1_2011_MID--AUDIO_R1-D9_11_Track11_wav.midi"
+  },
+  {
+    "composer": "Sergei Rachmaninoff",
+    "title": "Prelude in G-Sharp Minor,Op. 32 No. 12",
+    "duration": 127.737585938,
+    "audio_path": "data/maestro_subset\\2011/MIDI-Unprocessed_03_R2_2011_MID--AUDIO_R2-D1_06_Track06_wav.wav",
+    "midi_path": "data/maestro_subset\\2011/MIDI-Unprocessed_03_R2_2011_MID--AUDIO_R2-D1_06_Track06_wav.midi"
+  },
+  {
+    "composer": "Claude Debussy",
+    "title": "Etude No. 7 \"Study in Chromatic Steps\"",
+    "duration": 134.376478304,
+    "audio_path": "data/maestro_subset\\2004/MIDI-Unprocessed_SMF_17_R1_2004_03-06_ORIG_MID--AUDIO_20_R2_2004_12_Track12_wav--1.wav",
+    "midi_path": "data/maestro_subset\\2004/MIDI-Unprocessed_SMF_17_R1_2004_03-06_ORIG_MID--AUDIO_20_R2_2004_12_Track12_wav--1.midi"
+  },
+  {
+    "composer": "Fr\u00e9d\u00e9ric Chopin",
+    "title": "Etude Op. 10 No. 12",
+    "duration": 136.134375,
+    "audio_path": "data/maestro_subset\\2015/MIDI-Unprocessed_R1_D1-1-8_mid--AUDIO-from_mp3_06_R1_2015_wav--6.wav",
+    "midi_path": "data/maestro_subset\\2015/MIDI-Unprocessed_R1_D1-1-8_mid--AUDIO-from_mp3_06_R1_2015_wav--6.midi"
+  },
+  {
+    "composer": "Alexander Scriabin",
+    "title": "Etude Op. 42, Nos. 4 & 5",
+    "duration": 136.315301719,
+    "audio_path": "data/maestro_subset\\2009/MIDI-Unprocessed_02_R1_2009_03-06_ORIG_MID--AUDIO_02_R1_2009_02_R1_2009_04_WAV.wav",
+    "midi_path": "data/maestro_subset\\2009/MIDI-Unprocessed_02_R1_2009_03-06_ORIG_MID--AUDIO_02_R1_2009_02_R1_2009_04_WAV.midi"
+  },
+  {
+    "composer": "Domenico Scarlatti",
+    "title": "Sonata in D Major, K. 118",
+    "duration": 136.679884688,
+    "audio_path": "data/maestro_subset\\2014/MIDI-UNPROCESSED_01-03_R1_2014_MID--AUDIO_01_R1_2014_wav--1.wav",
+    "midi_path": "data/maestro_subset\\2014/MIDI-UNPROCESSED_01-03_R1_2014_MID--AUDIO_01_R1_2014_wav--1.midi"
+  },
+  {
+    "composer": "Fr\u00e9d\u00e9ric Chopin",
+    "title": "Etude Op. 10 No. 12 in C Minor",
+    "duration": 138.094146094,
+    "audio_path": "data/maestro_subset\\2011/MIDI-Unprocessed_07_R1_2011_MID--AUDIO_R1-D3_03_Track03_wav.wav",
+    "midi_path": "data/maestro_subset\\2011/MIDI-Unprocessed_07_R1_2011_MID--AUDIO_R1-D3_03_Track03_wav.midi"
+  },
+  {
+    "composer": "Domenico Scarlatti",
+    "title": "Sonata in D Major, K. 96 L. 465",
+    "duration": 138.765886875,
+    "audio_path": "data/maestro_subset\\2008/MIDI-Unprocessed_10_R2_2008_01-05_ORIG_MID--AUDIO_10_R2_2008_wav--2.wav",
+    "midi_path": "data/maestro_subset\\2008/MIDI-Unprocessed_10_R2_2008_01-05_ORIG_MID--AUDIO_10_R2_2008_wav--2.midi"
+  },
+  {
+    "composer": "Domenico Scarlatti",
+    "title": "Sonata in D Major, K96",
+    "duration": 140.121387656,
+    "audio_path": "data/maestro_subset\\2018/MIDI-Unprocessed_Recital17-19_MID--AUDIO_18_R1_2018_wav--3.wav",
+    "midi_path": "data/maestro_subset\\2018/MIDI-Unprocessed_Recital17-19_MID--AUDIO_18_R1_2018_wav--3.midi"
+  },
+  {
+    "composer": "Domenico Scarlatti",
+    "title": "Sonata in A Major, K. 208",
+    "duration": 146.682545625,
+    "audio_path": "data/maestro_subset\\2014/MIDI-UNPROCESSED_01-03_R1_2014_MID--AUDIO_01_R1_2014_wav--2.wav",
+    "midi_path": "data/maestro_subset\\2014/MIDI-UNPROCESSED_01-03_R1_2014_MID--AUDIO_01_R1_2014_wav--2.midi"
+  },
+  {
+    "composer": "Fr\u00e9d\u00e9ric Chopin",
+    "title": "Etude Op. 10 No. 12",
+    "duration": 150.49375,
+    "audio_path": "data/maestro_subset\\2015/MIDI-Unprocessed_R1_D1-9-12_mid--AUDIO-from_mp3_11_R1_2015_wav--3.wav",
+    "midi_path": "data/maestro_subset\\2015/MIDI-Unprocessed_R1_D1-9-12_mid--AUDIO-from_mp3_11_R1_2015_wav--3.midi"
+  },
+  {
+    "composer": "Wolfgang Amadeus Mozart",
+    "title": "Sonata in F Major, K. 280, 1st mov.",
+    "duration": 192.605309531,
+    "audio_path": "data/maestro_subset\\2013/ORIG-MIDI_03_7_6_13_Group__MID--AUDIO_09_R1_2013_wav--3.wav",
+    "midi_path": "data/maestro_subset\\2013/ORIG-MIDI_03_7_6_13_Group__MID--AUDIO_09_R1_2013_wav--3.midi"
+  },
+  {
+    "composer": "Bach",
+    "title": "Prelude In C Major BWV 846",
+    "duration": 139.0,
+    "audio_path": "test.mp3",
+    "midi_path": "results/test_transcribed.mid"
+  }
+]
