@@ -141,7 +141,7 @@ def time_to_beat(t, beat_times):
 
 
 def analyze_ioi(midi_path, beat_times, candidate_subdivisions=(1.0, 0.5, 0.25, 0.125),
-                tolerance=0.15, coverage_threshold=0.85):
+                tolerance=0.15, coverage_threshold=0.80):
     """
     Auto-detect the piece's minimum rhythmic subdivision and a sane note-
     duration cap from the *onsets* alone -- deliberately ignoring note-off
@@ -287,15 +287,18 @@ def quantize_notes(midi_path, beat_times, subdivision, staff_split_pitch=60,
                    max_note_duration=None, pedal_intervals=None):
     """
     Quantize onsets/offsets to the beat grid, round values for clean music21 
-    compatibility, filter out micro-note jitter from pitch wobble, and fix up 
-    durations so pedal smear doesn't produce overlapping notes.
+    compatibility, filter out micro-note jitter from pitch wobble, snap trimmed 
+    durations to the subdivision grid, and fix up durations so pedal smear 
+    doesn't produce overlapping notes.
 
     Core Logic & Features:
       - Precision Rounding: Rounds onsets and durations to 4 decimal places 
         to prevent Fraction mismatch errors in music21.
       - Micro-Note Filtering: Discards tiny notes shorter than the minimum threshold 
         (0.05 beats) to eliminate neural network transcription jitter and vibrato.
-      - Legato Capping: Each note's duration is capped at the onset of the *next* note in the same staff, avoiding the "32nd notes and rests everywhere" mess.
+      - Grid-Snapping Duration Trimming: Caps each note's duration at the next onset 
+        in the same staff, then snaps the resulting length strictly to a multiple 
+        of the grid subdivision to prevent 'inexpressible duration' XML export crashes.
       - Pedal-Aware Release: Staff-final notes (with no subsequent onset) use the 
         *actual* CC64 sustain pedal release time when available, keeping long notes 
         sustained naturally without an arbitrary global cap.
