@@ -6,7 +6,6 @@ Features:
   - Auto-calculates meter (3/4 vs 4/4) from detected downbeats
   - Key signature parsing from title & note analysis
   - MusicXML & PDF export via MuseScore
-  - First-onset phase correction for neural beat-tracker lag
 """
 
 import argparse
@@ -87,13 +86,14 @@ def estimate_beat_grid_and_meter(audio_path, title="", user_time_sig="auto", mid
 
     avg_beat_dur = np.median(np.diff(beat_times))
 
-    # Automatic Phase Correction for neural beat-tracker lag
+    # --- AUTOMATIC PHASE CORRECTION (Fixes the "starts on beat 2" bug) ---
     if midi_path and os.path.exists(midi_path):
         pm = pretty_midi.PrettyMIDI(midi_path)
         all_notes = [n for inst in pm.instruments if not inst.is_drum for n in inst.notes]
         if all_notes:
             first_note_time = min(n.start for n in all_notes)
             diff = beat_times[0] - first_note_time
+            # If the model lagged by roughly one beat interval, shift grid back
             if 0.5 * avg_beat_dur <= diff <= 1.5 * avg_beat_dur:
                 print(f"Detected ~1-beat phase lag ({diff:.3f}s). Shifting beat grid backward.")
                 beat_times = beat_times - avg_beat_dur
@@ -102,12 +102,13 @@ def estimate_beat_grid_and_meter(audio_path, title="", user_time_sig="auto", mid
 
     tempo_val = 60.0 / avg_beat_dur
 
-    # Safe padding avoiding shape/dimension mismatch errors
+    # Safe padding that avoids shape/dimension mismatch errors
     start_padding = beat_times[0] - avg_beat_dur
     end_padding = beat_times[-1] + avg_beat_dur
     extended_beat_times = np.insert(beat_times, 0, start_padding)
     extended_beat_times = np.append(extended_beat_times, end_padding)
 
+    # 2. Determine Time Signature... (keep the rest of your time sig logic unchanged)
     if user_time_sig != "auto":
         final_time_sig = user_time_sig
     else:
@@ -130,7 +131,6 @@ def estimate_beat_grid_and_meter(audio_path, title="", user_time_sig="auto", mid
     print(f"Tempo: {tempo_val:.1f} BPM | Final Time Signature: {final_time_sig}")
     return tempo_val, extended_beat_times, final_time_sig
 
-
 def time_to_beat(t, beat_times):
     idx = np.searchsorted(beat_times, t) - 1
     idx = int(np.clip(idx, 0, len(beat_times) - 2))
@@ -139,7 +139,91 @@ def time_to_beat(t, beat_times):
     return idx + frac
 
 
-def quantize_notes(midi_path, beat_times, subdivision):
+def analyze_ioi(midi_path, beat_times, candidate_subdivisions=(1.0, 0.5, 1/3, 0.25, 1/6, 0.125, 1/12, 1/16),
+                 tolerance=0.15, coverage_threshold=0.85):
+    """
+    Auto-detect the piece's minimum rhythmic subdivision and a sane note-
+    duration cap from the *onsets* alone -- deliberately ignoring note-off
+    times, since sustain pedal smears those but leaves onset timing intact.
+
+    Approach:
+      1. Collapse near-simultaneous onsets (chords) into single onset times,
+         so IOIs reflect melodic rhythm rather than chord-voicing jitter.
+      2. Convert consecutive onset gaps ("IOIs") into beat units.
+      3. For each candidate subdivision, from coarsest to finest, check what
+         fraction of IOIs land close to an integer multiple of it. Take the
+         coarsest subdivision that explains most of the IOIs -- this avoids
+         over-fitting to noise/expressive timing by defaulting to 64th notes.
+      4. Suggest a max_note_duration from the IOI distribution itself
+         (rather than a fixed 2.0), so the duration cap scales with the
+         piece's actual tempo/note density instead of a one-size constant.
+
+    Returns (chosen_subdivision, suggested_max_duration, diagnostics).
+    """
+    pm = pretty_midi.PrettyMIDI(midi_path)
+    onset_times = sorted({n.start for inst in pm.instruments if not inst.is_drum for n in inst.notes})
+
+    if len(onset_times) < 3:
+        print("IOI analysis: too few onsets detected; falling back to defaults.")
+        return 0.25, 2.0, {"reason": "too few onsets"}
+
+    onset_beats = np.array([time_to_beat(t, beat_times) for t in onset_times])
+
+    # Collapse onsets that land within ~1/64 of a beat of each other --
+    # these are effectively simultaneous (chord notes), not separate rhythmic events.
+    collapsed = [onset_beats[0]]
+    for b in onset_beats[1:]:
+        if b - collapsed[-1] > (1.0 / 64):
+            collapsed.append(b)
+    collapsed = np.array(collapsed)
+
+    iois = np.diff(collapsed)
+    iois = iois[iois > 1e-3]
+
+    if len(iois) == 0:
+        print("IOI analysis: no usable positive IOIs found; falling back to defaults.")
+        return 0.25, 2.0, {"reason": "no positive IOIs"}
+
+    diagnostics = {}
+    chosen_subdivision = candidate_subdivisions[-1]  # finest, as a fallback
+    for s in sorted(candidate_subdivisions, reverse=True):  # coarse -> fine
+        ratios = iois / s
+        nearest = np.round(ratios)
+        nearest[nearest == 0] = 1  # guard against tiny IOIs / div-by-zero
+        rel_error = np.abs(ratios - nearest) / nearest
+        coverage = float(np.mean(rel_error <= tolerance))
+        diagnostics[f"coverage_at_{round(s, 4)}"] = round(coverage, 3)
+        if coverage >= coverage_threshold:
+            chosen_subdivision = s
+            break
+
+    # Cap sustained notes at roughly the longest plausible single note implied
+    # by the piece's own rhythm: a small multiple of the detected grid, or
+    # 2x the 90th-percentile IOI, whichever is larger -- so a slow Adagio
+    # doesn't get its half-notes clipped, but pedal smear in a fast Presto
+    # still gets reined in.
+    ioi_p90 = float(np.percentile(iois, 90))
+    suggested_max_duration = max(chosen_subdivision * 4, ioi_p90 * 2)
+
+    diagnostics.update({
+        "n_onsets": len(onset_times),
+        "n_iois_after_chord_collapse": len(iois),
+        "ioi_median_beats": float(np.median(iois)),
+        "ioi_p90_beats": ioi_p90,
+        "chosen_subdivision": chosen_subdivision,
+        "suggested_max_duration": suggested_max_duration,
+    })
+
+    print(f"IOI analysis: {len(onset_times)} onsets -> {len(iois)} inter-onset gaps "
+          f"(median {diagnostics['ioi_median_beats']:.3f} beats)")
+    print(f"  Detected minimum rhythmic unit: {chosen_subdivision:.4f} quarterLength "
+          f"(coverage {diagnostics.get(f'coverage_at_{round(chosen_subdivision, 4)}', 0):.2f})")
+    print(f"  Suggested max_note_duration: {suggested_max_duration:.3f} quarterLength")
+
+    return chosen_subdivision, suggested_max_duration, diagnostics
+
+
+def quantize_notes(midi_path, beat_times, subdivision, max_note_duration=2.0):
     pm = pretty_midi.PrettyMIDI(midi_path)
     events = []
     for instrument in pm.instruments:
@@ -151,12 +235,16 @@ def quantize_notes(midi_path, beat_times, subdivision):
 
             q_onset = round(onset_beat / subdivision) * subdivision
             q_offset = round(offset_beat / subdivision) * subdivision
-            if q_offset <= q_onset:
-                q_offset = q_onset + subdivision
+            
+            duration = q_offset - q_onset
+            # Cap maximum duration to avoid pedal smearing/endless ties
+            if duration > max_note_duration:
+                duration = max_note_duration
+            if duration <= 0:
+                duration = subdivision
 
-            events.append({"pitch": n.pitch, "onset": q_onset, "duration": q_offset - q_onset})
+            events.append({"pitch": n.pitch, "onset": q_onset, "duration": duration})
     return events
-
 
 def determine_key_signature(score, key_arg="auto", title=""):
     if key_arg and key_arg.lower() != "auto":
@@ -272,7 +360,10 @@ def main():
     ap.add_argument("--results-dir", default="results")
     ap.add_argument("--composer-filter", default="scarlatti")
     ap.add_argument("--title", default=None)
-    ap.add_argument("--subdivision", type=float, default=0.25)
+    ap.add_argument("--subdivision", default="auto",
+                     help="quarterLength grid size (e.g. '0.25'), or 'auto' to detect via IOI analysis")
+    ap.add_argument("--max-note-duration", default="auto",
+                     help="quarterLength cap on note length (e.g. '2.0'), or 'auto' to derive from IOI analysis")
     ap.add_argument("--time-signature", default="auto", help="e.g. '3/4', '3/8', '4/4', or 'auto'")
     ap.add_argument("--key", default="auto", help="e.g. 'd', 'D', or 'auto'")
     ap.add_argument("--staff-split-pitch", type=int, default=60)
@@ -299,8 +390,19 @@ def main():
     tempo_val, beat_times, time_sig = estimate_beat_grid_and_meter(
         entry["audio_path"], title=entry_title, user_time_sig=args.time_signature, midi_path=midi_path
     )
-    events = quantize_notes(midi_path, beat_times, args.subdivision)
-    print(f"Quantized {len(events)} notes to {args.subdivision}-quarterLength grid")
+
+    if args.subdivision == "auto" or args.max_note_duration == "auto":
+        detected_subdivision, detected_max_duration, _ = analyze_ioi(midi_path, beat_times)
+    else:
+        detected_subdivision = detected_max_duration = None
+
+    subdivision = float(args.subdivision) if args.subdivision != "auto" else detected_subdivision
+    max_note_duration = (float(args.max_note_duration) if args.max_note_duration != "auto"
+                          else detected_max_duration)
+
+    events = quantize_notes(midi_path, beat_times, subdivision, max_note_duration=max_note_duration)
+    print(f"Quantized {len(events)} notes to {subdivision}-quarterLength grid "
+          f"(max_note_duration={max_note_duration:.3f})")
 
     score = build_score(
         events,
