@@ -223,9 +223,27 @@ def analyze_ioi(midi_path, beat_times, candidate_subdivisions=(1.0, 0.5, 1/3, 0.
     return chosen_subdivision, suggested_max_duration, diagnostics
 
 
-def quantize_notes(midi_path, beat_times, subdivision, max_note_duration=2.0):
+def quantize_notes(midi_path, beat_times, subdivision, staff_split_pitch=60, max_note_duration=None):
+    """
+    Quantize onsets/offsets to the beat grid, then fix up durations so pedal
+    smear doesn't produce overlapping notes.
+
+    A single global max_note_duration constant doesn't work well for pieces
+    like continuous-arpeggio preludes: it either leaves gaps (spurious rests
+    in the notation) or lets notes run past the next onset (forcing music21
+    to represent the overlap as tied/split notes -- the "32nd notes and
+    rests everywhere" mess). Instead, each note's duration is capped at the
+    onset of the *next* note in the same staff (treble/bass, split the same
+    way build_score() splits them) -- a "legato assumption" that truncates
+    pedal-inflated note-off times right where the next note actually begins,
+    which is exactly how continuous passages like this are notated by hand.
+
+    max_note_duration, if given, is still applied as a secondary safety cap
+    (e.g. for a staff's very last note, which has no "next onset" to clip
+    against).
+    """
     pm = pretty_midi.PrettyMIDI(midi_path)
-    events = []
+    raw_notes = []
     for instrument in pm.instruments:
         if instrument.is_drum:
             continue
@@ -235,15 +253,33 @@ def quantize_notes(midi_path, beat_times, subdivision, max_note_duration=2.0):
 
             q_onset = round(onset_beat / subdivision) * subdivision
             q_offset = round(offset_beat / subdivision) * subdivision
-            
+
             duration = q_offset - q_onset
-            # Cap maximum duration to avoid pedal smearing/endless ties
-            if duration > max_note_duration:
-                duration = max_note_duration
             if duration <= 0:
                 duration = subdivision
 
-            events.append({"pitch": n.pitch, "onset": q_onset, "duration": duration})
+            raw_notes.append({"pitch": n.pitch, "onset": q_onset, "duration": duration})
+
+    events = []
+    for staff_notes in (
+        [e for e in raw_notes if e["pitch"] >= staff_split_pitch],
+        [e for e in raw_notes if e["pitch"] < staff_split_pitch],
+    ):
+        staff_notes.sort(key=lambda e: e["onset"])
+        distinct_onsets = sorted(set(e["onset"] for e in staff_notes))
+        for e in staff_notes:
+            later = [o for o in distinct_onsets if o > e["onset"] + 1e-9]
+            if later:
+                gap_to_next = later[0] - e["onset"]
+                e["duration"] = min(e["duration"], gap_to_next)
+            elif max_note_duration is not None:
+                # last note in the staff: no next onset to clip against,
+                # fall back to the safety cap so it doesn't run forever
+                e["duration"] = min(e["duration"], max_note_duration)
+            if e["duration"] <= 0:
+                e["duration"] = subdivision
+            events.append(e)
+
     return events
 
 def determine_key_signature(score, key_arg="auto", title=""):
@@ -400,9 +436,12 @@ def main():
     max_note_duration = (float(args.max_note_duration) if args.max_note_duration != "auto"
                           else detected_max_duration)
 
-    events = quantize_notes(midi_path, beat_times, subdivision, max_note_duration=max_note_duration)
+    events = quantize_notes(midi_path, beat_times, subdivision,
+                             staff_split_pitch=args.staff_split_pitch,
+                             max_note_duration=max_note_duration)
     print(f"Quantized {len(events)} notes to {subdivision}-quarterLength grid "
-          f"(max_note_duration={max_note_duration:.3f})")
+          f"(durations capped at next onset per staff; "
+          f"safety-cap for staff-final notes = {max_note_duration:.3f})")
 
     score = build_score(
         events,
