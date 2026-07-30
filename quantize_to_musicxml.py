@@ -140,8 +140,8 @@ def time_to_beat(t, beat_times):
     return idx + frac
 
 
-def analyze_ioi(midi_path, beat_times, candidate_subdivisions=(1.0, 0.5, 1/3, 0.25, 1/6, 0.125, 1/12, 1/16),
-                 tolerance=0.15, coverage_threshold=0.85):
+def analyze_ioi(midi_path, beat_times, candidate_subdivisions=(1.0, 0.5, 0.25, 0.125),
+                tolerance=0.15, coverage_threshold=0.85):
     """
     Auto-detect the piece's minimum rhythmic subdivision and a sane note-
     duration cap from the *onsets* alone -- deliberately ignoring note-off
@@ -284,30 +284,27 @@ def pedal_release_after(t, pedal_intervals):
 
 
 def quantize_notes(midi_path, beat_times, subdivision, staff_split_pitch=60,
-                    max_note_duration=None, pedal_intervals=None):
+                   max_note_duration=None, pedal_intervals=None):
     """
-    Quantize onsets/offsets to the beat grid, then fix up durations so pedal
-    smear doesn't produce overlapping notes.
+    Quantize onsets/offsets to the beat grid, round values for clean music21 
+    compatibility, filter out micro-note jitter from pitch wobble, and fix up 
+    durations so pedal smear doesn't produce overlapping notes.
 
-    A single global max_note_duration constant doesn't work well for pieces
-    like continuous-arpeggio preludes: it either leaves gaps (spurious rests
-    in the notation) or lets notes run past the next onset (forcing music21
-    to represent the overlap as tied/split notes -- the "32nd notes and
-    rests everywhere" mess). Instead, each note's duration is capped at the
-    onset of the *next* note in the same staff (treble/bass, split the same
-    way build_score() splits them) -- a "legato assumption" that truncates
-    pedal-inflated note-off times right where the next note actually begins,
-    which is exactly how continuous passages like this are notated by hand.
-
-    max_note_duration, if given, is still applied as a last-resort safety
-    cap. But when pedal_intervals is provided, notes with no next onset in
-    their staff (e.g. a final held chord) get their duration set from the
-    *actual* pedal-release time instead of an arbitrary constant -- so a
-    genuine long pedal tone stays long, and a note released while the
-    pedal happens to be up isn't stretched at all.
+    Core Logic & Features:
+      - Precision Rounding: Rounds onsets and durations to 4 decimal places 
+        to prevent Fraction mismatch errors in music21.
+      - Micro-Note Filtering: Discards tiny notes shorter than the minimum threshold 
+        (0.05 beats) to eliminate neural network transcription jitter and vibrato.
+      - Legato Capping: Each note's duration is capped at the onset of the *next* note in the same staff, avoiding the "32nd notes and rests everywhere" mess.
+      - Pedal-Aware Release: Staff-final notes (with no subsequent onset) use the 
+        *actual* CC64 sustain pedal release time when available, keeping long notes 
+        sustained naturally without an arbitrary global cap.
     """
     pm = pretty_midi.PrettyMIDI(midi_path)
     raw_notes = []
+    
+    min_note_threshold = 0.05
+
     for instrument in pm.instruments:
         if instrument.is_drum:
             continue
@@ -319,14 +316,18 @@ def quantize_notes(midi_path, beat_times, subdivision, staff_split_pitch=60,
             q_offset = round(offset_beat / subdivision) * subdivision
 
             duration = q_offset - q_onset
+            
+            if (q_offset - q_onset) < min_note_threshold:
+                continue
+
             if duration <= 0:
                 duration = subdivision
 
             raw_notes.append({
                 "pitch": n.pitch,
-                "onset": q_onset,
-                "duration": duration,
-                "raw_end_time": n.end,  # seconds; needed to look up pedal state
+                "onset": round(q_onset, 4),
+                "duration": round(duration, 4),
+                "raw_end_time": n.end,
             })
 
     events = []
@@ -340,25 +341,28 @@ def quantize_notes(midi_path, beat_times, subdivision, staff_split_pitch=60,
             later = [o for o in distinct_onsets if o > e["onset"] + 1e-9]
             if later:
                 gap_to_next = later[0] - e["onset"]
-                e["duration"] = min(e["duration"], gap_to_next)
+                # Snap the trimmed duration back to the grid subdivision
+                snapped_dur = round(round(min(e["duration"], gap_to_next) / subdivision) * subdivision, 4)
+                e["duration"] = max(snapped_dur, subdivision)
             else:
-                # No next onset in this staff (e.g. the staff's final note).
-                # Prefer the real pedal-release time over a blind constant.
                 release = pedal_release_after(e["raw_end_time"], pedal_intervals or [])
                 if release is not None:
                     release_beat = time_to_beat(release, beat_times)
                     q_release = round(release_beat / subdivision) * subdivision
                     pedal_duration = q_release - e["onset"]
                     if pedal_duration > 0:
-                        # Real pedal-release measurement is authoritative here --
-                        # no need to re-clip it against max_note_duration.
-                        e["duration"] = pedal_duration
+                        snapped_dur = round(round(pedal_duration / subdivision) * subdivision, 4)
+                        e["duration"] = max(snapped_dur, subdivision)
                     elif max_note_duration is not None:
-                        e["duration"] = min(e["duration"], max_note_duration)
+                        snapped_dur = round(round(min(e["duration"], max_note_duration) / subdivision) * subdivision, 4)
+                        e["duration"] = max(snapped_dur, subdivision)
                 elif max_note_duration is not None:
-                    e["duration"] = min(e["duration"], max_note_duration)
+                    snapped_dur = round(round(min(e["duration"], max_note_duration) / subdivision) * subdivision, 4)
+                    e["duration"] = max(snapped_dur, subdivision)
+            
             if e["duration"] <= 0:
                 e["duration"] = subdivision
+                
             del e["raw_end_time"]
             events.append(e)
 
@@ -478,11 +482,15 @@ def export_with_fixed_voices(score, out_path):
     xml_bytes = exporter.parse(score)
     xml_str = xml_bytes.decode("utf-8")
 
+# 1. Bump voice tags to prevent music21 overlap conflicts
     fixed_xml, count = re.subn(
         r"<voice>(\d+)</voice>",
         lambda m: f"<voice>{int(m.group(1)) + 1}</voice>",
         xml_str,
     )
+
+    # 2. Strip music21 beam tags so MuseScore auto-beams cleanly on import
+    fixed_xml = re.sub(r'\s*<beam[^>]*>.*?</beam>', '', fixed_xml)
 
     os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
     with open(out_path, "w", encoding="utf-8") as f:
