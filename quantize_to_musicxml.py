@@ -14,10 +14,11 @@ import json
 import os
 import re
 import subprocess
+from collections import defaultdict
 
 import numpy as np
 import pretty_midi
-from music21 import environment, key, metadata, meter, note, stream
+from music21 import chord, environment, key, metadata, meter, note, stream
 from music21 import tempo as m21tempo
 from music21.musicxml.m21ToXml import GeneralObjectExporter
 from beat_this.inference import File2Beats
@@ -223,7 +224,67 @@ def analyze_ioi(midi_path, beat_times, candidate_subdivisions=(1.0, 0.5, 1/3, 0.
     return chosen_subdivision, suggested_max_duration, diagnostics
 
 
-def quantize_notes(midi_path, beat_times, subdivision, staff_split_pitch=60, max_note_duration=None):
+def extract_pedal_intervals(midi_path, control_number=64, on_threshold=64):
+    """
+    Reads sustain pedal (MIDI CC64) events from the transcribed MIDI and
+    returns a sorted list of (pedal_down_time, pedal_up_time) tuples, in
+    seconds. piano_transcription_inference detects pedal on/off separately
+    from note on/off and writes it into the output MIDI as CC64 messages --
+    this uses that real signal instead of guessing sustain purely from
+    note-off smear.
+
+    Returns an empty list (and prints a note) if no CC64 events are found,
+    so callers can fall back gracefully to the old behavior.
+    """
+    pm = pretty_midi.PrettyMIDI(midi_path)
+    cc_events = []
+    for instrument in pm.instruments:
+        if instrument.is_drum:
+            continue
+        for cc in instrument.control_changes:
+            if cc.number == control_number:
+                cc_events.append((cc.time, cc.value >= on_threshold))
+
+    if not cc_events:
+        print("Pedal analysis: no sustain-pedal (CC64) events found in the MIDI; "
+              "falling back to the fixed safety cap for notes with no next onset.")
+        return []
+
+    cc_events.sort(key=lambda x: x[0])
+
+    intervals = []
+    down_time = None
+    for t, is_down in cc_events:
+        if is_down and down_time is None:
+            down_time = t
+        elif not is_down and down_time is not None:
+            intervals.append((down_time, t))
+            down_time = None
+    if down_time is not None:
+        intervals.append((down_time, pm.get_end_time()))
+
+    print(f"Pedal analysis: found {len(intervals)} sustain-pedal segment(s) in the MIDI.")
+    return intervals
+
+
+def pedal_release_after(t, pedal_intervals):
+    """
+    If time t (seconds) falls inside a pedal-down interval, returns that
+    interval's release ("pedal up") time. Otherwise returns None, meaning
+    the pedal wasn't holding the note at that point, so nothing to correct.
+    pedal_intervals must be sorted by down-time (extract_pedal_intervals
+    already returns them that way).
+    """
+    for down, up in pedal_intervals:
+        if down <= t <= up:
+            return up
+        if down > t:
+            break
+    return None
+
+
+def quantize_notes(midi_path, beat_times, subdivision, staff_split_pitch=60,
+                    max_note_duration=None, pedal_intervals=None):
     """
     Quantize onsets/offsets to the beat grid, then fix up durations so pedal
     smear doesn't produce overlapping notes.
@@ -238,9 +299,12 @@ def quantize_notes(midi_path, beat_times, subdivision, staff_split_pitch=60, max
     pedal-inflated note-off times right where the next note actually begins,
     which is exactly how continuous passages like this are notated by hand.
 
-    max_note_duration, if given, is still applied as a secondary safety cap
-    (e.g. for a staff's very last note, which has no "next onset" to clip
-    against).
+    max_note_duration, if given, is still applied as a last-resort safety
+    cap. But when pedal_intervals is provided, notes with no next onset in
+    their staff (e.g. a final held chord) get their duration set from the
+    *actual* pedal-release time instead of an arbitrary constant -- so a
+    genuine long pedal tone stays long, and a note released while the
+    pedal happens to be up isn't stretched at all.
     """
     pm = pretty_midi.PrettyMIDI(midi_path)
     raw_notes = []
@@ -258,7 +322,12 @@ def quantize_notes(midi_path, beat_times, subdivision, staff_split_pitch=60, max
             if duration <= 0:
                 duration = subdivision
 
-            raw_notes.append({"pitch": n.pitch, "onset": q_onset, "duration": duration})
+            raw_notes.append({
+                "pitch": n.pitch,
+                "onset": q_onset,
+                "duration": duration,
+                "raw_end_time": n.end,  # seconds; needed to look up pedal state
+            })
 
     events = []
     for staff_notes in (
@@ -272,12 +341,25 @@ def quantize_notes(midi_path, beat_times, subdivision, staff_split_pitch=60, max
             if later:
                 gap_to_next = later[0] - e["onset"]
                 e["duration"] = min(e["duration"], gap_to_next)
-            elif max_note_duration is not None:
-                # last note in the staff: no next onset to clip against,
-                # fall back to the safety cap so it doesn't run forever
-                e["duration"] = min(e["duration"], max_note_duration)
+            else:
+                # No next onset in this staff (e.g. the staff's final note).
+                # Prefer the real pedal-release time over a blind constant.
+                release = pedal_release_after(e["raw_end_time"], pedal_intervals or [])
+                if release is not None:
+                    release_beat = time_to_beat(release, beat_times)
+                    q_release = round(release_beat / subdivision) * subdivision
+                    pedal_duration = q_release - e["onset"]
+                    if pedal_duration > 0:
+                        # Real pedal-release measurement is authoritative here --
+                        # no need to re-clip it against max_note_duration.
+                        e["duration"] = pedal_duration
+                    elif max_note_duration is not None:
+                        e["duration"] = min(e["duration"], max_note_duration)
+                elif max_note_duration is not None:
+                    e["duration"] = min(e["duration"], max_note_duration)
             if e["duration"] <= 0:
                 e["duration"] = subdivision
+            del e["raw_end_time"]
             events.append(e)
 
     return events
@@ -312,6 +394,24 @@ def determine_key_signature(score, key_arg="auto", title=""):
         return key.Key('C')
 
 
+def report_offkey_notes(events, target_key):
+    """
+    Flags what fraction of notes fall outside the detected key's diatonic
+    scale. A high number here for a piece expected to be diatonic (like
+    this Prelude) points to genuine pitch errors from the transcription
+    model -- those spurious sharps/flats are what force extra natural
+    signs onto the surrounding notes, not a bug in this script.
+    """
+    diatonic_pitch_classes = {p.pitchClass for p in target_key.getScale().pitches}
+    offkey = [e for e in events if e["pitch"] % 12 not in diatonic_pitch_classes]
+    if offkey:
+        pct = 100 * len(offkey) / len(events)
+        print(f"Note: {len(offkey)}/{len(events)} notes ({pct:.1f}%) fall outside "
+              f"{target_key.name}'s diatonic scale. If accidentals are unexpected for "
+              f"this piece, this is likely the cause -- worth cross-checking against "
+              f"error_analysis.py's near-miss/semitone-gap output for the same recording.")
+
+
 def build_score(events, staff_split_pitch, time_sig, key_arg="auto", title="", composer=""):
     treble_events = [e for e in events if e["pitch"] >= staff_split_pitch]
     bass_events = [e for e in events if e["pitch"] < staff_split_pitch]
@@ -329,15 +429,31 @@ def build_score(events, staff_split_pitch, time_sig, key_arg="auto", title="", c
         part = stream.Part(id=label)
         part.insert(0, meter.TimeSignature(time_sig))
 
+        # Group notes that share an onset into chord.Chord objects. Leaving
+        # simultaneous same-staff notes as separate Note objects at the same
+        # offset makes music21's makeVoices()/fillGaps() treat them as
+        # competing melodic lines, which inserts filler rests/ties to
+        # reconcile them -- almost certainly the source of the spurious
+        # ties/rests you're seeing, separate from the duration-capping issue.
+        by_onset = defaultdict(list)
         for e in evs:
-            el = note.Note(e["pitch"])
-            el.duration.quarterLength = e["duration"]
-            part.insert(e["onset"], el)
+            by_onset[round(e["onset"], 6)].append(e)
+
+        for onset in sorted(by_onset):
+            group = by_onset[onset]
+            duration = max(g["duration"] for g in group)
+            if len(group) == 1:
+                el = note.Note(group[0]["pitch"])
+            else:
+                el = chord.Chord([g["pitch"] for g in group])
+            el.duration.quarterLength = duration
+            part.insert(onset, el)
 
         part.makeVoices(inPlace=True, fillGaps=True)
         score.insert(0, part)
 
     target_key = determine_key_signature(score, key_arg=key_arg, title=title)
+    report_offkey_notes(events, target_key)
     for part in score.parts:
         part.insert(0, target_key)
         part.makeNotation(inPlace=True)
@@ -403,6 +519,8 @@ def main():
     ap.add_argument("--time-signature", default="auto", help="e.g. '3/4', '3/8', '4/4', or 'auto'")
     ap.add_argument("--key", default="auto", help="e.g. 'd', 'D', or 'auto'")
     ap.add_argument("--staff-split-pitch", type=int, default=60)
+    ap.add_argument("--no-pedal", action="store_true",
+                     help="disable reading sustain-pedal (CC64) events for duration correction")
     ap.add_argument("--out", default="results/quantized_output.musicxml")
     args = ap.parse_args()
 
@@ -436,12 +554,15 @@ def main():
     max_note_duration = (float(args.max_note_duration) if args.max_note_duration != "auto"
                           else detected_max_duration)
 
+    pedal_intervals = extract_pedal_intervals(midi_path) if not args.no_pedal else []
+
     events = quantize_notes(midi_path, beat_times, subdivision,
                              staff_split_pitch=args.staff_split_pitch,
-                             max_note_duration=max_note_duration)
+                             max_note_duration=max_note_duration,
+                             pedal_intervals=pedal_intervals)
     print(f"Quantized {len(events)} notes to {subdivision}-quarterLength grid "
-          f"(durations capped at next onset per staff; "
-          f"safety-cap for staff-final notes = {max_note_duration:.3f})")
+          f"(durations capped at next onset per staff; staff-final notes use "
+          f"real pedal-release time when available, else safety-cap = {max_note_duration:.3f})")
 
     score = build_score(
         events,
