@@ -14,6 +14,9 @@ import json
 import os
 import re
 import subprocess
+import json
+import os
+import sys
 from collections import defaultdict
 
 import numpy as np
@@ -23,6 +26,11 @@ from music21 import tempo as m21tempo
 from music21.musicxml.m21ToXml import GeneralObjectExporter
 from beat_this.inference import File2Beats
 
+# Force stdout/stderr to use UTF-8 and replace unprintable characters instead of crashing
+if sys.stdout.encoding.lower() != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+if sys.stderr.encoding.lower() != 'utf-8':
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 
 def safe_name(entry):
     base = os.path.splitext(os.path.basename(entry["audio_path"]))[0]
@@ -35,6 +43,35 @@ def load_scores(scores_csv):
     with open(scores_csv, newline="", encoding="utf-8") as f:
         return list(csv.DictReader(f))
 
+def get_piece_metadata(manifest_path, audio_filename):
+    """
+    Attempts to look up metadata from the MAESTRO manifest.
+    If the file isn't found, returns safe fallback defaults.
+    """
+    base_filename = os.path.basename(audio_filename)
+    
+    if manifest_path and os.path.exists(manifest_path):
+        try:
+            with open(manifest_path, 'r') as f:
+                manifest = json.load(f)
+                
+            # Search manifest for matching filename or path
+            for entry in manifest:
+                if base_filename in entry.get("audio_filename", "") or base_filename in entry.get("midi_filename", ""):
+                    composer = entry.get("composer", "Unknown Composer")
+                    title = entry.get("title", base_filename)
+                    key = entry.get("key_signature", "C major") # Or however your manifest stores it
+                    return composer, title, key
+        except Exception as e:
+            print(f"Warning: Could not read manifest: {e}")
+            
+    # Fallbacks for custom/arbitrary files not in the manifest
+    print(f"Notice: '{base_filename}' not found in manifest. Using default metadata fallbacks.")
+    fallback_composer = "Unknown Composer"
+    fallback_title = os.path.splitext(base_filename)[0].replace("_", " ")
+    fallback_key = "C major"  # Safe fallback key signature
+    
+    return fallback_composer, fallback_title, fallback_key
 
 def pick_recording(manifest, scores, composer_filter, title=None):
     candidates = [e for e in manifest if composer_filter.lower() in e["composer"].lower()]
@@ -499,7 +536,8 @@ def export_with_fixed_voices(score, out_path):
     with open(out_path, "w", encoding="utf-8") as f:
         f.write(fixed_xml)
 
-    print(f"\nMusicXML written to {out_path} (bumped {count} <voice> tags)")
+    safe_path = out_path.encode("ascii", "replace").decode("ascii")
+    print(f"\nMusicXML written to {safe_path} (bumped {count} <voice> tags)")
 
 
 def try_render_pdf(musicxml_path):
@@ -516,6 +554,13 @@ def try_render_pdf(musicxml_path):
         print(f"PDF rendering failed: {ex}")
 
 
+def load_manifest(manifest_path):
+    if not manifest_path or not os.path.exists(manifest_path):
+        return []
+    with open(manifest_path, 'r', encoding='utf-8') as f:
+        return json.load(f)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--manifest", default="data/maestro_subset/manifest.json")
@@ -524,22 +569,55 @@ def main():
     ap.add_argument("--composer-filter", default="scarlatti")
     ap.add_argument("--title", default=None)
     ap.add_argument("--subdivision", default="auto",
-                     help="quarterLength grid size (e.g. '0.25'), or 'auto' to detect via IOI analysis")
+                    help="quarterLength grid size (e.g. '0.25'), or 'auto' to detect via IOI analysis")
     ap.add_argument("--max-note-duration", default="auto",
-                     help="quarterLength cap on note length (e.g. '2.0'), or 'auto' to derive from IOI analysis")
+                    help="quarterLength cap on note length (e.g. '2.0'), or 'auto' to derive from IOI analysis")
     ap.add_argument("--time-signature", default="auto", help="e.g. '3/4', '3/8', '4/4', or 'auto'")
     ap.add_argument("--key", default="auto", help="e.g. 'd', 'D', or 'auto'")
     ap.add_argument("--staff-split-pitch", type=int, default=60)
     ap.add_argument("--no-pedal", action="store_true",
-                     help="disable reading sustain-pedal (CC64) events for duration correction")
+                    help="disable reading sustain-pedal (CC64) events for duration correction")
     ap.add_argument("--out", default="results/quantized_output.musicxml")
+    ap.add_argument("--audio-path", default=None, help="Optional direct audio path for arbitrary uploads")
+    
     args = ap.parse_args()
-
-    with open(args.manifest) as f:
-        manifest = json.load(f)
+    
+    manifest = load_manifest(args.manifest)
     scores = load_scores(args.scores)
 
-    entry = pick_recording(manifest, scores, args.composer_filter, args.title)
+    # Determine the entry (either via direct audio-path, manifest match, or composer filter)
+    audio_path = getattr(args, 'audio_path', None)
+    matched_entry = None
+
+    if audio_path and manifest:
+        base_filename = os.path.basename(audio_path)
+        for entry in manifest:
+            if base_filename in entry.get("audio_filename", "") or base_filename in entry.get("midi_filename", ""):
+                matched_entry = entry
+                break
+
+    if matched_entry:
+        print(f"Found match in manifest. Using MAESTRO metadata.")
+        entry = matched_entry
+    elif audio_path:
+        base_filename = os.path.basename(audio_path)
+        safe_base_name = base_filename.encode("ascii", "replace").decode("ascii")
+        print(f"Notice: '{safe_base_name}' not found in manifest. Using dynamic fallback metadata for arbitrary file.")
+        entry = {
+            "composer": "Unknown Composer",
+            "title": os.path.splitext(base_filename)[0].replace("_", " "),
+            "audio_filename": audio_path,
+            "audio_path": audio_path,
+            "key_signature": "C major"
+        }
+    else:
+        # Fallback to filtering via CLI arguments
+        entry = pick_recording(manifest, scores, args.composer_filter, args.title)
+
+    # Ensure audio_path compatibility for safe_name
+    if "audio_path" not in entry and "audio_filename" in entry:
+        entry["audio_path"] = entry["audio_filename"]
+
     name = safe_name(entry)
     midi_path = os.path.join(args.results_dir, f"{name}.mid")
     if not os.path.exists(midi_path):
@@ -563,14 +641,14 @@ def main():
 
     subdivision = float(args.subdivision) if args.subdivision != "auto" else detected_subdivision
     max_note_duration = (float(args.max_note_duration) if args.max_note_duration != "auto"
-                          else detected_max_duration)
+                         else detected_max_duration)
 
     pedal_intervals = extract_pedal_intervals(midi_path) if not args.no_pedal else []
 
     events = quantize_notes(midi_path, beat_times, subdivision,
-                             staff_split_pitch=args.staff_split_pitch,
-                             max_note_duration=max_note_duration,
-                             pedal_intervals=pedal_intervals)
+                           staff_split_pitch=args.staff_split_pitch,
+                           max_note_duration=max_note_duration,
+                           pedal_intervals=pedal_intervals)
     print(f"Quantized {len(events)} notes to {subdivision}-quarterLength grid "
           f"(durations capped at next onset per staff; staff-final notes use "
           f"real pedal-release time when available, else safety-cap = {max_note_duration:.3f})")

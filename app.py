@@ -1,8 +1,28 @@
+"""
+
+Features:
+  - Deep-learning downbeat & beat tracking via all-in-one-infer
+  - Auto-calculates meter (3/4 vs 4/4) from detected downbeats
+  - Key signature parsing from title & note analysis
+  - **Dynamic fallback metadata support for arbitrary custom audio uploads**
+  - MusicXML & PDF export via MuseScore
+"""
 import os
-import sys  # 1. Import sys
+import sys
+import re
 import subprocess
 import gradio as gr
 from transcribe import transcribe
+
+# Force UTF-8 encoding for terminal logging
+if sys.stdout.encoding.lower() != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+if sys.stderr.encoding.lower() != 'utf-8':
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
+def safe_name(audio_path):
+    base = os.path.splitext(os.path.basename(audio_path))[0]
+    return re.sub(r"[^A-Za-z0-9_-]", "_", base)
 
 def process_audio(audio_file):
     if audio_file is None:
@@ -10,8 +30,8 @@ def process_audio(audio_file):
     
     os.makedirs("results", exist_ok=True)
     
-    original_filename = os.path.basename(audio_file)
-    base_name = os.path.splitext(original_filename)[0]
+    # Use safe_name so app.py and quantize_to_musicxml.py match filenames
+    base_name = safe_name(audio_file)
     
     midi_output = os.path.join("results", f"{base_name}.mid")
     musicxml_output = os.path.join("results", f"{base_name}.musicxml")
@@ -22,11 +42,12 @@ def process_audio(audio_file):
         print(f"Transcribing {audio_file}...")
         transcribe(audio_file, midi_output)
         
-        # Step 2: Run quantization script using the active venv interpreter
+        # Step 2: Run quantization script using the matched sanitized paths
         print(f"Quantizing and rendering score...")
         cmd = [
-            sys.executable, "quantize_to_musicxml.py",  # 2. Uses venv Python instead of global Python
+            sys.executable, "quantize_to_musicxml.py",
             "--manifest", "data/maestro_subset/manifest.json",
+            "--audio-path", audio_file,
             "--out", musicxml_output
         ]
         
@@ -45,7 +66,7 @@ def process_audio(audio_file):
 
 with gr.Blocks() as demo:
     gr.Markdown("# 🎹 AI Piano Transcription & Sheet Music Renderer")
-    gr.Markdown("Upload an audio recording (WAV/MP3) from your MAESTRO subset to generate interactive sheet music and a PDF.")
+    gr.Markdown("Upload an audio recording (WAV/MP3) to generate interactive sheet music and a PDF.")
     
     with gr.Row():
         with gr.Column():
