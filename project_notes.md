@@ -48,3 +48,11 @@ Tackling Sustain Smearing: Discovered how piano pedal resonance causes raw MIDI 
 Dynamic Quantization Strategies: Discussed moving away from hardcoded global values toward statistical analysis of the score to automatically determine minimum rhythmic units and handle staff-splitting across the grand staff.
 
 Refining Rhythmic Detection: Realized that looking at raw note durations fails due to the pedal, and established that analyzing the Inter-Onset Intervals (IOIs)—the spacing between consecutive note start times—is the correct way to isolate the piece's true underlying rhythmic pulse.
+
+Custom Metadata Inputs: Expanded the Gradio UI to include optional text boxes for Piece Title and Composer, passing them seamlessly through CLI arguments to embed them directly into the generated MusicXML and PDF scores.
+
+User-Friendly Target Start Beat: Replaced the confusing raw-second offset slider with an intuitive Target Start Beat input, allowing you to explicitly declare which beat number the audio should begin on.
+
+Dynamic Tempo-Based Grid Shifting: Implemented automated backend calculations that use the piece's tempo (beat_interval) to scale and slide the entire rhythmic grid precisely when a target beat is specified.
+
+Event Timestamp Normalization: Added an automated pre-check in build_score to shift raw event onsets cleanly to 0.0, eliminating music21 stream boundary crashes caused by shifted grid offsets.

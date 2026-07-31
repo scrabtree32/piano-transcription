@@ -110,7 +110,7 @@ def parse_meter_from_title(title):
     return None
 
 
-def estimate_beat_grid_and_meter(audio_path, title="", user_time_sig="auto", midi_path=None):
+def estimate_beat_grid_and_meter(audio_path, title="", user_time_sig="auto", midi_path=None, target_beat=1):
     print(f"Running beat-this classical tracking on:\n  {audio_path}")
     
     file2beats = File2Beats(checkpoint_path="final0", device="cpu", dbn=False)
@@ -119,6 +119,28 @@ def estimate_beat_grid_and_meter(audio_path, title="", user_time_sig="auto", mid
     beat_times = np.array(beats)
     downbeat_times = np.array(downbeats)
 
+    if len(beat_times) < 2:
+        raise SystemExit("Beat tracking failed to detect enough beats in audio.")
+
+    # Calculate average beat interval from the first few tracked beats
+    beat_interval = np.mean(np.diff(beat_times[:4]))
+
+    # Calculate offset dynamically based on what beat the user wants vs what the model assumed (beat 2)
+    current_assumed_beat = 2
+    beat_difference = current_assumed_beat - target_beat
+    downbeat_offset = beat_difference * beat_interval
+
+    print(f"Adjusting grid: Target beat is {target_beat}, applying time offset of {downbeat_offset:.3f}s")
+    
+    beat_times = beat_times + downbeat_offset
+    downbeat_times = downbeat_times + downbeat_offset
+
+    print(f"Adjusting grid: Target beat is {target_beat}, applying time offset of {downbeat_offset:.3f}s")
+    
+    beat_times = beat_times + downbeat_offset
+    downbeat_times = downbeat_times + downbeat_offset
+    
+    # ... rest of your function ...
     if len(beat_times) < 2:
         raise SystemExit("Beat tracking failed to detect enough beats in audio.")
 
@@ -457,6 +479,14 @@ def report_offkey_notes(events, target_key):
 
 
 def build_score(events, staff_split_pitch, time_sig, key_arg="auto", title="", composer=""):
+    # Ensure no event starts at a negative timestamp (eliminates negative offset errors)
+    if events:
+        min_onset = min(e["onset"] for e in events)
+        if min_onset < 0:
+            print(f"Shifting all event onsets by {-min_onset:.2f} beats to start cleanly at 0.0.")
+            for e in events:
+                e["onset"] -= min_onset
+
     treble_events = [e for e in events if e["pitch"] >= staff_split_pitch]
     bass_events = [e for e in events if e["pitch"] < staff_split_pitch]
 
@@ -469,16 +499,14 @@ def build_score(events, staff_split_pitch, time_sig, key_arg="auto", title="", c
         md.composer = composer
     score.metadata = md
 
+    target_key = determine_key_signature(score, key_arg=key_arg, title=title)
+    report_offkey_notes(events, target_key)
+
     for label, evs in (("treble", treble_events), ("bass", bass_events)):
         part = stream.Part(id=label)
         part.insert(0, meter.TimeSignature(time_sig))
+        part.insert(0, target_key)
 
-        # Group notes that share an onset into chord.Chord objects. Leaving
-        # simultaneous same-staff notes as separate Note objects at the same
-        # offset makes music21's makeVoices()/fillGaps() treat them as
-        # competing melodic lines, which inserts filler rests/ties to
-        # reconcile them -- almost certainly the source of the spurious
-        # ties/rests you're seeing, separate from the duration-capping issue.
         by_onset = defaultdict(list)
         for e in evs:
             by_onset[round(e["onset"], 6)].append(e)
@@ -494,16 +522,10 @@ def build_score(events, staff_split_pitch, time_sig, key_arg="auto", title="", c
             part.insert(onset, el)
 
         part.makeVoices(inPlace=True, fillGaps=True)
+        part.makeNotation(inPlace=True)
         score.insert(0, part)
 
-    target_key = determine_key_signature(score, key_arg=key_arg, title=title)
-    report_offkey_notes(events, target_key)
-    for part in score.parts:
-        part.insert(0, target_key)
-        part.makeNotation(inPlace=True)
-
     return score
-
 
 def find_musescore_path():
     us = environment.UserSettings()
@@ -567,7 +589,7 @@ def main():
     ap.add_argument("--scores", default="results/scores.csv")
     ap.add_argument("--results-dir", default="results")
     ap.add_argument("--composer-filter", default="scarlatti")
-    ap.add_argument("--title", default=None)
+    ap.add_argument("--title", default=None, help="Explicit title override from GUI")
     ap.add_argument("--subdivision", default="auto",
                     help="quarterLength grid size (e.g. '0.25'), or 'auto' to detect via IOI analysis")
     ap.add_argument("--max-note-duration", default="auto",
@@ -579,6 +601,8 @@ def main():
                     help="disable reading sustain-pedal (CC64) events for duration correction")
     ap.add_argument("--out", default="results/quantized_output.musicxml")
     ap.add_argument("--audio-path", default=None, help="Optional direct audio path for arbitrary uploads")
+    ap.add_argument("--composer", default=None, help="Explicit composer override")
+    ap.add_argument("--target-beat", type=int, default=1, help="The desired beat number for the start of the audio")
     
     args = ap.parse_args()
     
@@ -623,15 +647,20 @@ def main():
     if not os.path.exists(midi_path):
         raise SystemExit(f"No transcribed MIDI found at {midi_path}")
 
-    entry_title = entry.get("title", "")
-    entry_composer = entry.get("composer", "")
+    entry_title = args.title if args.title else entry.get("title", base_filename)
+    # Use CLI override if provided, otherwise fall back to manifest/default
+    entry_composer = args.composer if args.composer else entry.get("composer", "")
 
     print(f"\nUsing: {entry_composer} - {entry_title}")
     print(f"  audio: {entry['audio_path']}")
     print(f"  transcribed MIDI: {midi_path}")
 
     tempo_val, beat_times, time_sig = estimate_beat_grid_and_meter(
-        entry["audio_path"], title=entry_title, user_time_sig=args.time_signature, midi_path=midi_path
+        entry["audio_path"], 
+        title=entry_title, 
+        user_time_sig=args.time_signature, 
+        midi_path=midi_path,
+        target_beat=args.target_beat  
     )
 
     if args.subdivision == "auto" or args.max_note_duration == "auto":
