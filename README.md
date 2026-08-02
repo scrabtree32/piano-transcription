@@ -22,7 +22,7 @@ Built on a pretrained CRNN (Kong et al., 2021) for note/pedal transcription and 
    pip install -r requirements.txt
    ```
 4. **ffmpeg:** required for audio format conversion. Install via your platform's package manager (e.g. `winget install ffmpeg` on Windows) and restart your terminal so it's recognized on PATH.
-5. **Pretrained model weights (~165MB):** `piano_transcription_inference` attempts to auto-download these via `wget` on first run. This works out of the box on Mac/Linux. On Windows, `wget` isn't available by default, so the download silently fails — manually download the weights from TODO: [Zenodo link] and place them at:
+5. **Pretrained model weights (~165MB):** `piano_transcription_inference` attempts to auto-download these via `wget` on first run. This works out of the box on Mac/Linux. On Windows, `wget` isn't available by default, so the download silently fails — manually download the weights from (https://zenodo.org/record/4034264/files/CRNN_note_F1%3D0.9677_pedal_F1%3D0.9186.pth?download=1) and place them at:
    - Mac/Linux: `~/piano_transcription_inference_data/`
    - Windows: `C:\Users\<you>\piano_transcription_inference_data\`
 
@@ -30,7 +30,7 @@ Built on a pretrained CRNN (Kong et al., 2021) for note/pedal transcription and 
 
 ### 1. Transcribe audio to MIDI
 ```bash
-python TODO_transcribe_script.py --input path/to/audio.wav --output results/transcription.mid
+python transcribe.py --input path/to/audio.wav --output results/transcription.mid
 ```
 
 ### 2. Quantize to MusicXML / rendered PDF
@@ -41,7 +41,7 @@ Optional flags: `--title`, `--composer` (embedded in the output score), `--targe
 
 ### 3. (Optional) Try it via the Gradio UI
 ```bash
-python TODO_app.py
+python app.py
 ```
 
 ## Reproducing the evaluation results

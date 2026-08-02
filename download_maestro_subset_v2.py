@@ -5,7 +5,7 @@ Grabs the official metadata CSV, filters by split and optional composer,
 sorts by duration, and downloads audio/MIDI pairs.
 
 Usage:
-    python download_maestro_subset.py --composer "Mozart" --num 1 --max-minutes 5 --out data/maestro_subset
+    python download_maestro_subset_v2.py --composer "Mozart" --num 1 --max-minutes 5 --out data/maestro_subset
 """
 
 import argparse
