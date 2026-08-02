@@ -1,25 +1,25 @@
 {
-  "total_ref_notes": 21546,
-  "total_est_notes": 21174,
-  "total_missed": 607,
-  "total_spurious": 235,
-  "missed_pct": 2.8172282558247472,
-  "spurious_pct": 1.1098517049211296,
+  "total_ref_notes": 23943,
+  "total_est_notes": 23548,
+  "total_missed": 632,
+  "total_spurious": 237,
+  "missed_pct": 2.6396023890072255,
+  "spurious_pct": 1.0064549006285035,
   "per_register_recall": {
     "bass": {
-      "ref_total": 5704,
-      "ref_matched": 5527,
-      "recall_pct": 96.89691444600281
+      "ref_total": 6205,
+      "ref_matched": 6022,
+      "recall_pct": 97.05076551168412
     },
     "mid": {
-      "ref_total": 11602,
-      "ref_matched": 11337,
-      "recall_pct": 97.715911049819
+      "ref_total": 13128,
+      "ref_matched": 12847,
+      "recall_pct": 97.85953686776355
     },
     "treble": {
-      "ref_total": 4240,
-      "ref_matched": 4075,
-      "recall_pct": 96.10849056603773
+      "ref_total": 4610,
+      "ref_matched": 4442,
+      "recall_pct": 96.35574837310195
     }
   },
   "semitone_gap_histogram": {
@@ -33,6 +33,7 @@
     "3": 3,
     "-20": 2,
     "-6": 2,
+    "5": 2,
     "-7": 1,
     "22": 1,
     "-22": 1,
@@ -47,7 +48,88 @@
     "-27": 1,
     "7": 1,
     "-54": 1,
-    "5": 1,
     "-31": 1
-  }
+  },
+  "per_composer": [
+    {
+      "composer": "Alexander Scriabin",
+      "ref_notes": 783,
+      "est_notes": 770,
+      "missed_pct": 3.19,
+      "spurious_pct": 1.56,
+      "n_near_misses": 0,
+      "max_abs_semitone_gap": null,
+      "mean_abs_semitone_gap": null
+    },
+    {
+      "composer": "Bach",
+      "ref_notes": 565,
+      "est_notes": 565,
+      "missed_pct": 0.0,
+      "spurious_pct": 0.0,
+      "n_near_misses": 0,
+      "max_abs_semitone_gap": null,
+      "mean_abs_semitone_gap": null
+    },
+    {
+      "composer": "Claude Debussy",
+      "ref_notes": 1897,
+      "est_notes": 1867,
+      "missed_pct": 3.95,
+      "spurious_pct": 2.41,
+      "n_near_misses": 18,
+      "max_abs_semitone_gap": 23,
+      "mean_abs_semitone_gap": 4.56
+    },
+    {
+      "composer": "Domenico Scarlatti",
+      "ref_notes": 7125,
+      "est_notes": 7064,
+      "missed_pct": 1.77,
+      "spurious_pct": 0.92,
+      "n_near_misses": 5,
+      "max_abs_semitone_gap": 20,
+      "mean_abs_semitone_gap": 8.2
+    },
+    {
+      "composer": "Franz Schubert",
+      "ref_notes": 1110,
+      "est_notes": 1111,
+      "missed_pct": 1.08,
+      "spurious_pct": 1.17,
+      "n_near_misses": 0,
+      "max_abs_semitone_gap": null,
+      "mean_abs_semitone_gap": null
+    },
+    {
+      "composer": "Fr\u00e9d\u00e9ric Chopin",
+      "ref_notes": 7603,
+      "est_notes": 7402,
+      "missed_pct": 3.58,
+      "spurious_pct": 0.96,
+      "n_near_misses": 36,
+      "max_abs_semitone_gap": 54,
+      "mean_abs_semitone_gap": 10.33
+    },
+    {
+      "composer": "Sergei Rachmaninoff",
+      "ref_notes": 3028,
+      "est_notes": 2960,
+      "missed_pct": 3.2,
+      "spurious_pct": 0.98,
+      "n_near_misses": 9,
+      "max_abs_semitone_gap": 36,
+      "mean_abs_semitone_gap": 7.67
+    },
+    {
+      "composer": "Wolfgang Amadeus Mozart",
+      "ref_notes": 1832,
+      "est_notes": 1809,
+      "missed_pct": 1.36,
+      "spurious_pct": 0.11,
+      "n_near_misses": 1,
+      "max_abs_semitone_gap": 5,
+      "mean_abs_semitone_gap": 5.0
+    }
+  ]
 }

@@ -231,7 +231,7 @@ def main():
     for composer, c in sorted(per_composer.items()):
         miss_pct = 100 * c["missed"] / c["ref_total"] if c["ref_total"] else None
         spur_pct = 100 * c["spurious"] / c["est_total"] if c["est_total"] else None
-        abs_gaps = [abs(g) for g in c["gaps"]]
+        abs_gaps = [int(abs(g)) for g in c["gaps"]]
         max_gap = max(abs_gaps) if abs_gaps else None
         mean_gap = sum(abs_gaps) / len(abs_gaps) if abs_gaps else None
 

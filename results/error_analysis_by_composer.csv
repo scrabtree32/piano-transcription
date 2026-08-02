@@ -1,0 +1,9 @@
+composer,ref_notes,est_notes,missed_pct,spurious_pct,n_near_misses,max_abs_semitone_gap,mean_abs_semitone_gap
+Alexander Scriabin,783,770,3.19,1.56,0,,
+Bach,565,565,0.0,0.0,0,,
+Claude Debussy,1897,1867,3.95,2.41,18,23,4.56
+Domenico Scarlatti,7125,7064,1.77,0.92,5,20,8.2
+Franz Schubert,1110,1111,1.08,1.17,0,,
+Frédéric Chopin,7603,7402,3.58,0.96,36,54,10.33
+Sergei Rachmaninoff,3028,2960,3.2,0.98,9,36,7.67
+Wolfgang Amadeus Mozart,1832,1809,1.36,0.11,1,5,5.0
