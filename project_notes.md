@@ -56,3 +56,21 @@ User-Friendly Target Start Beat: Replaced the confusing raw-second offset slider
 Dynamic Tempo-Based Grid Shifting: Implemented automated backend calculations that use the piece's tempo (beat_interval) to scale and slide the entire rhythmic grid precisely when a target beat is specified.
 
 Event Timestamp Normalization: Added an automated pre-check in build_score to shift raw event onsets cleanly to 0.0, eliminating music21 stream boundary crashes caused by shifted grid offsets.
+
+Neural Transcription Noise & Ghost Notes: * Issue: Frame-level output from piano_transcription_inference combined with sustain pedal resonance and hammer echoes introduced micro-timing jitter.
+
+Impact: When fed into rigid quantization grids, this jitter manifested as phantom short notes (sixteenths/thirty-seconds) that cluttered the sheet music.
+
+Mitigation: Adjusted inter-onset interval (IOI) analysis thresholds (targeting an 80% coverage baseline) to prefer coarser rhythmic subdivisions and prevent over-quantization.
+
+Rubato vs. Rigid Grid Alignment: * Issue: Expressive human timing variations (rubato), particularly in Romantic repertoire like Chopin's Prelude in E minor, caused severe tempo fluctuations.
+
+Impact: The downbeat transformer (beat_this) and mathematical bar-line grids suffered from phase drift, causing measures to split mid-phrase and breaking standard metric assumptions.
+
+Target Start Beat (Anacrusis) Offset Drift: * Issue: Pieces starting on upbeats or non-standard downbeats required explicit grid offsetting.
+
+Impact: While the underlying mathematical offset shift executed, warping an elastic rubato performance onto a rigid grid often just shifted the bar line break to a different incorrect location rather than resolving the phrasing.
+
+Key Signature Estimation Failures on Chromatic Works: * Issue: music21's automatic key signature detection algorithm relies heavily on diatonic note distributions. Highly chromatic works with extensive passing tones and diminished harmonies (e.g., Chopin) caused incorrect auto-detections.
+
+Mitigation: Implemented a manual key signature dropdown override in the Gradio UI and linked it to the backend quantize_to_musicxml.py script to force correct key signatures when auto-detection fails.
